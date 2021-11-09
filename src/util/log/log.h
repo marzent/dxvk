@@ -3,9 +3,8 @@
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
-
-#include "../thread.h"
 
 namespace dxvk {
   
@@ -48,7 +47,7 @@ namespace dxvk {
     
     const LogLevel m_minLevel;
     
-    dxvk::mutex   m_mutex;
+    std::mutex    m_mutex;
     std::ofstream m_fileStream;
     
     void emitMsg(LogLevel level, const std::string& message);

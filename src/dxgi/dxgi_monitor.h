@@ -39,7 +39,7 @@ namespace dxvk {
 
     IUnknown* m_parent;
 
-    dxvk::mutex                                        m_monitorMutex;
+    std::mutex                                         m_monitorMutex;
     std::unordered_map<HMONITOR, DXGI_VK_MONITOR_DATA> m_monitorData;
 
   };

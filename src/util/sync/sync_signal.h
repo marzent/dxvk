@@ -3,10 +3,10 @@
 #include <atomic>
 #include <functional>
 #include <list>
+#include <condition_variable>
+#include <mutex>
 
 #include "../rc/util_rc.h"
-
-#include "../thread.h"
 
 namespace dxvk::sync {
   
@@ -72,13 +72,13 @@ namespace dxvk::sync {
     }
 
     void signal(uint64_t value) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       m_value.store(value, std::memory_order_release);
       m_cond.notify_all();
     }
     
     void wait(uint64_t value) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       m_cond.wait(lock, [this, value] {
         return value <= m_value.load(std::memory_order_acquire);
       });
@@ -86,9 +86,9 @@ namespace dxvk::sync {
 
   private:
 
-    std::atomic<uint64_t>    m_value;
-    dxvk::mutex              m_mutex;
-    dxvk::condition_variable m_cond;
+    std::atomic<uint64_t>   m_value;
+    std::mutex              m_mutex;
+    std::condition_variable m_cond;
 
   };
 
@@ -114,7 +114,7 @@ namespace dxvk::sync {
     }
 
     void signal(uint64_t value) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       m_value.store(value, std::memory_order_release);
       m_cond.notify_all();
 
@@ -129,7 +129,7 @@ namespace dxvk::sync {
     }
 
     void wait(uint64_t value) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       m_cond.wait(lock, [this, value] {
         return value <= m_value.load(std::memory_order_acquire);
       });
@@ -137,7 +137,7 @@ namespace dxvk::sync {
 
     template<typename Fn>
     void setCallback(uint64_t value, Fn&& proc) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
 
       if (value > this->value())
         m_callbacks.emplace_back(std::piecewise_construct,
@@ -150,8 +150,8 @@ namespace dxvk::sync {
   private:
 
     std::atomic<uint64_t>    m_value;
-    dxvk::mutex              m_mutex;
-    dxvk::condition_variable m_cond;
+    std::mutex              m_mutex;
+    std::condition_variable m_cond;
 
     std::list<std::pair<uint64_t, std::function<void ()>>> m_callbacks;
 

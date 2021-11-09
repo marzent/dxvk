@@ -40,7 +40,7 @@ namespace dxvk {
     
   private:
 
-    dxvk::mutex       m_mutex;
+    std::mutex        m_mutex;
 
     D3D11Device*      m_parent;
     Rc<DxvkDevice>    m_device;

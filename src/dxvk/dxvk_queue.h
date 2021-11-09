@@ -173,18 +173,18 @@ namespace dxvk {
     std::atomic<uint32_t>   m_pending = { 0u };
     std::atomic<uint64_t>   m_gpuIdle = { 0ull };
 
-    dxvk::mutex                 m_mutex;
-    dxvk::mutex                 m_mutexQueue;
+    std::mutex              m_mutex;
+    std::mutex              m_mutexQueue;
     
-    dxvk::condition_variable    m_appendCond;
-    dxvk::condition_variable    m_submitCond;
-    dxvk::condition_variable    m_finishCond;
+    std::condition_variable m_appendCond;
+    std::condition_variable m_submitCond;
+    std::condition_variable m_finishCond;
 
     std::queue<DxvkSubmitEntry> m_submitQueue;
     std::queue<DxvkSubmitEntry> m_finishQueue;
 
-    dxvk::thread                m_submitThread;
-    dxvk::thread                m_finishThread;
+    dxvk::thread            m_submitThread;
+    dxvk::thread            m_finishThread;
 
     VkResult submitToQueue(
       const DxvkSubmitInfo& submission);

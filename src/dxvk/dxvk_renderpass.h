@@ -219,7 +219,7 @@ namespace dxvk {
     
     const Rc<vk::DeviceFn> m_vkd;
     
-    dxvk::mutex                     m_mutex;
+    std::mutex                      m_mutex;
     std::unordered_map<
       DxvkRenderPassFormat,
       DxvkRenderPass,
