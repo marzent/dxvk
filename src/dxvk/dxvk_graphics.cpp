@@ -62,17 +62,21 @@ namespace dxvk {
 
   VkPipeline DxvkGraphicsPipeline::getPipelineHandle(
     const DxvkGraphicsPipelineStateInfo& state,
-    const DxvkRenderPass*                renderPass) {
+    const DxvkRenderPass*                renderPass,
+          bool                           async) {
     DxvkGraphicsPipelineInstance* instance = nullptr;
 
-    { std::lock_guard<sync::Spinlock> lock(m_mutex);
+    { //std::lock_guard<sync::Spinlock> lock(m_mutex);
     
       instance = this->findInstance(state, renderPass);
       
       if (instance)
         return instance->pipeline();
       
-      instance = this->createInstance(state, renderPass);
+      if (async && m_pipeMgr->m_compiler != nullptr)
+        m_pipeMgr->m_compiler->queueCompilation(this, state, renderPass);
+      else
+        instance = this->createInstance(state, renderPass);
     }
     
     if (!instance)
@@ -83,13 +87,13 @@ namespace dxvk {
   }
 
 
-  void DxvkGraphicsPipeline::compilePipeline(
+  bool DxvkGraphicsPipeline::compilePipeline(
     const DxvkGraphicsPipelineStateInfo& state,
     const DxvkRenderPass*                renderPass) {
     std::lock_guard<sync::Spinlock> lock(m_mutex);
 
-    if (!this->findInstance(state, renderPass))
-      this->createInstance(state, renderPass);
+    return (this->findInstance(state, renderPass) == nullptr) &&
+           (this->createInstance(state, renderPass) != nullptr);
   }
 
 
@@ -103,6 +107,7 @@ namespace dxvk {
 
     VkPipeline newPipelineHandle = this->createPipeline(state, renderPass);
 
+    std::lock_guard<sync::Spinlock> lock(m_mutex2);
     m_pipeMgr->m_numGraphicsPipelines += 1;
     return &m_pipelines.emplace_back(state, renderPass, newPipelineHandle);
   }
@@ -111,6 +116,7 @@ namespace dxvk {
   DxvkGraphicsPipelineInstance* DxvkGraphicsPipeline::findInstance(
     const DxvkGraphicsPipelineStateInfo& state,
     const DxvkRenderPass*                renderPass) {
+    std::lock_guard<sync::Spinlock> lock(m_mutex2);
     for (auto& instance : m_pipelines) {
       if (instance.isCompatible(state, renderPass))
         return &instance;
