@@ -29,11 +29,23 @@ namespace dxvk {
     // Wait for all pending Vulkan commands to be
     // executed before we destroy any resources.
     this->waitForIdle();
+
+    // Stop workers explicitly in order to prevent
+    // access to structures that are being destroyed.
+    m_objects.pipelineManager().stopWorkerThreads();
   }
 
 
   bool DxvkDevice::isUnifiedMemoryArchitecture() const {
     return m_adapter->isUnifiedMemoryArchitecture();
+  }
+
+
+  DxvkFramebufferSize DxvkDevice::getDefaultFramebufferSize() const {
+    return DxvkFramebufferSize {
+      m_properties.core.properties.limits.maxFramebufferWidth,
+      m_properties.core.properties.limits.maxFramebufferHeight,
+      m_properties.core.properties.limits.maxFramebufferLayers };
   }
 
 
@@ -101,17 +113,8 @@ namespace dxvk {
   
   
   Rc<DxvkFramebuffer> DxvkDevice::createFramebuffer(
-    const DxvkRenderTargets& renderTargets) {
-    const DxvkFramebufferSize defaultSize = {
-      m_properties.core.properties.limits.maxFramebufferWidth,
-      m_properties.core.properties.limits.maxFramebufferHeight,
-      m_properties.core.properties.limits.maxFramebufferLayers };
-    
-    auto renderPassFormat = DxvkFramebuffer::getRenderPassFormat(renderTargets);
-    auto renderPassObject = m_objects.renderPassPool().getRenderPass(renderPassFormat);
-    
-    return new DxvkFramebuffer(m_vkd,
-      renderPassObject, renderTargets, defaultSize);
+    const DxvkFramebufferInfo&  info) {
+    return new DxvkFramebuffer(m_vkd, info);
   }
   
   
