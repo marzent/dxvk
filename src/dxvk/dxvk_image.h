@@ -298,6 +298,21 @@ namespace dxvk {
     VkDeviceSize memSize() const {
       return m_image.memory.length();
     }
+
+    /**
+     * \brief Get full subresource range of the image
+     * 
+     * \returns Resource range of the whole image
+     */
+    VkImageSubresourceRange getAvailableSubresources() const {
+      VkImageSubresourceRange result;
+      result.aspectMask     = formatInfo()->aspectMask;
+      result.baseMipLevel   = 0;
+      result.levelCount     = info().mipLevels;
+      result.baseArrayLayer = 0;
+      result.layerCount     = info().numLayers;
+      return result;
+    }
     
   private:
     
@@ -403,6 +418,18 @@ namespace dxvk {
       return imageFormatInfo(m_info.format);
     }
     
+    /**
+     * \brief Unique object identifier
+     *
+     * Can be used to identify an object even when
+     * the lifetime of the object is unknown, and
+     * without referencing the actual object.
+     * \returns Unique identifier
+     */
+    uint64_t cookie() const {
+      return m_cookie;
+    }
+
     /**
      * \brief Mip level size
      * 
@@ -519,6 +546,10 @@ namespace dxvk {
     
     DxvkImageViewCreateInfo m_info;
     VkImageView             m_views[ViewCount];
+
+    uint64_t          m_cookie;
+
+    static std::atomic<uint64_t> s_cookie;
 
     void createView(VkImageViewType type, uint32_t numLayers);
     

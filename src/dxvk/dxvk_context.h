@@ -6,6 +6,7 @@
 #include "dxvk_context_state.h"
 #include "dxvk_data.h"
 #include "dxvk_objects.h"
+#include "dxvk_resource.h"
 #include "dxvk_util.h"
 
 namespace dxvk {
@@ -989,6 +990,23 @@ namespace dxvk {
             DxvkBarrierControlFlags control);
     
     /**
+     * \brief Launches a Cuda kernel
+     *
+     * Since the kernel is launched with an opaque set of
+     * kernel-specific parameters which may reference
+     * resources bindlessly, such resources must be listed by
+     * the caller in the 'buffers' and 'images' parameters so
+     * that their access may be tracked appropriately.
+     * \param [in] nvxLaunchInfo Kernel launch parameter struct
+     * \param [in] buffers List of {buffer,read,write} used by kernel
+     * \param [in] images List of {image,read,write} used by kernel
+     */
+    void launchCuKernelNVX(
+      const VkCuLaunchInfoNVX& nvxLaunchInfo,
+      const std::vector<std::pair<Rc<DxvkBuffer>, DxvkAccessFlags>>& buffers,
+      const std::vector<std::pair<Rc<DxvkImage>, DxvkAccessFlags>>& images);
+    
+    /**
      * \brief Signals a GPU event
      * \param [in] event The event
      */
@@ -1049,6 +1067,7 @@ namespace dxvk {
      * tools to mark different workloads within a frame.
      */
     void insertDebugLabel(VkDebugUtilsLabelEXT *label);
+
   private:
     
     Rc<DxvkDevice>          m_device;
@@ -1089,6 +1108,7 @@ namespace dxvk {
     std::array<DxvkShaderResourceSlot, MaxNumResourceSlots>  m_rc;
     std::array<DxvkGraphicsPipeline*, 4096> m_gpLookupCache = { };
     std::array<DxvkComputePipeline*,   256> m_cpLookupCache = { };
+    std::array<Rc<DxvkFramebuffer>,    512> m_framebufferCache = { };
 
     void blitImageFb(
       const Rc<DxvkImage>&        dstImage,
@@ -1209,7 +1229,7 @@ namespace dxvk {
     void spillRenderPass(bool suspend);
     
     void renderPassBindFramebuffer(
-      const Rc<DxvkFramebuffer>&  framebuffer,
+      const DxvkFramebufferInfo&  framebufferInfo,
       const DxvkRenderPassOps&    ops,
             uint32_t              clearValueCount,
       const VkClearValue*         clearValues);
@@ -1243,6 +1263,9 @@ namespace dxvk {
             VkDescriptorSet         set,
       const DxvkPipelineLayout*     layout);
 
+    DxvkFramebufferInfo makeFramebufferInfo(
+      const DxvkRenderTargets&      renderTargets);
+
     void updateFramebuffer();
     
     void applyRenderTargetLoadLayouts();
@@ -1264,8 +1287,8 @@ namespace dxvk {
             VkImageLayout           oldLayout);
 
     void updateRenderTargetLayouts(
-      const Rc<DxvkFramebuffer>&    newFb,
-      const Rc<DxvkFramebuffer>&    oldFb);
+      const DxvkFramebufferInfo&    newFb,
+      const DxvkFramebufferInfo&    oldFb);
 
     void prepareImage(
             DxvkBarrierSet&         barriers,
@@ -1331,6 +1354,9 @@ namespace dxvk {
 
     DxvkComputePipeline* lookupComputePipeline(
       const DxvkComputePipelineShaders&   shaders);
+    
+    Rc<DxvkFramebuffer> lookupFramebuffer(
+      const DxvkFramebufferInfo&      framebufferInfo);
 
     Rc<DxvkBuffer> createZeroBuffer(
             VkDeviceSize              size);
