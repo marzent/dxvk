@@ -256,6 +256,7 @@ namespace dxvk {
     const DxsoDefinedConstants& constants() { return m_constants; }
     uint32_t usedSamplers() const { return m_usedSamplers; }
     uint32_t usedRTs() const { return m_usedRTs; }
+    uint32_t maxDefinedConstant() const { return m_maxDefinedConstant; }
 
   private:
 
@@ -266,6 +267,7 @@ namespace dxvk {
 
     DxsoShaderMetaInfo         m_meta;
     DxsoDefinedConstants       m_constants;
+    uint32_t                   m_maxDefinedConstant;
 
     SpirvModule                m_module;
 
@@ -543,7 +545,24 @@ namespace dxvk {
     DxsoRegisterValue emitSaturate(
             DxsoRegisterValue       srcValue);
 
+    DxsoRegisterValue emitMulOperand(
+            DxsoRegisterValue       operand,
+            DxsoRegisterValue       other);
+
+    DxsoRegisterValue emitMul(
+            DxsoRegisterValue       a,
+            DxsoRegisterValue       b);
+
+    DxsoRegisterValue emitFma(
+            DxsoRegisterValue       a,
+            DxsoRegisterValue       b,
+            DxsoRegisterValue       c);
+
     DxsoRegisterValue emitDot(
+            DxsoRegisterValue       a,
+            DxsoRegisterValue       b);
+
+    DxsoRegisterValue emitCross(
             DxsoRegisterValue       a,
             DxsoRegisterValue       b);
 

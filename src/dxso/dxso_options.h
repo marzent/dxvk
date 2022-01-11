@@ -27,7 +27,7 @@ namespace dxvk {
     /// Whether to emulate d3d9 float behaviour using clampps
     /// True:  Perform emulation to emulate behaviour (ie. anything * 0 = 0)
     /// False: Don't do anything.
-    bool d3d9FloatEmulation;
+    D3D9FloatEmulation d3d9FloatEmulation;
 
     /// Whether or not we should care about pow(0, 0) = 1
     bool strictPow;
@@ -54,6 +54,9 @@ namespace dxvk {
     /// Workaround for games using alpha test == 1.0, etc due to wonky interpolation or
     /// misc. imprecision on some vendors
     bool alphaTestWiggleRoom;
+
+    /// Whether or not we can rely on robustness2 to handle oob constant access
+    bool robustness2Supported;
   };
 
 }
