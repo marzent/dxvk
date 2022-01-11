@@ -4,7 +4,6 @@
 
 #include "dxvk_device.h"
 #include "dxvk_context.h"
-#include "dxvk_main.h"
 
 namespace dxvk {
   
@@ -23,6 +22,10 @@ namespace dxvk {
       m_features.set(DxvkContextFeature::NullDescriptors);
     if (m_device->features().extExtendedDynamicState.extendedDynamicState)
       m_features.set(DxvkContextFeature::ExtendedDynamicState);
+
+    // Init framebuffer info with default render pass in case
+    // the app does not explicitly bind any render targets
+    m_state.om.framebufferInfo = makeFramebufferInfo(m_state.om.renderTargets);
   }
   
   
