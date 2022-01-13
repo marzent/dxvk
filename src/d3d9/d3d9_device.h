@@ -489,7 +489,7 @@ namespace dxvk {
     HRESULT STDMETHODCALLTYPE GetIndices(IDirect3DIndexBuffer9** ppIndexData);
 
     HRESULT STDMETHODCALLTYPE CreatePixelShader(
-      const DWORD*                  pFunction, 
+      const DWORD*                  pFunction,
             IDirect3DPixelShader9** ppShader);
 
     HRESULT STDMETHODCALLTYPE SetPixelShader(IDirect3DPixelShader9* pShader);
@@ -666,7 +666,7 @@ namespace dxvk {
 
     /**
      * \brief Locks a subresource of an image
-     * 
+     *
      * \param [in] Subresource The subresource of the image to lock
      * \param [out] pLockedBox The returned locked box of the image, containing data ptr and strides
      * \param [in] pBox The region of the subresource to lock. This offsets the returned data ptr
@@ -689,7 +689,7 @@ namespace dxvk {
 
     /**
      * \brief Unlocks a subresource of an image
-     * 
+     *
      * Passthrough to device unlock.
      * \param [in] Subresource The subresource of the image to unlock
      * \returns \c D3D_OK if the parameters are valid or D3DERR_INVALIDCALL if it fails.

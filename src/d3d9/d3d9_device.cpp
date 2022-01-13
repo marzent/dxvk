@@ -4678,7 +4678,7 @@ namespace dxvk {
     pResource->GPUReadingRange().Conjoin(pResource->DirtyRange());
     pResource->DirtyRange().Clear();
 
-	  return D3D_OK;
+      return D3D_OK;
   }
 
 
@@ -5054,11 +5054,7 @@ namespace dxvk {
   template <DxsoProgramType ShaderStage>
   void D3D9DeviceEx::UploadConstants() {
     if constexpr (ShaderStage == DxsoProgramTypes::VertexShader) {
-<<<<<<< HEAD
-      if (CanSWVP()) 
-=======
       if (CanSWVP())
->>>>>>> a70a35406e5ba7649e3db533435a7d664b0bb904
         return UploadSoftwareConstantSet(m_state.vsConsts, m_vsLayout);
       else
         return UploadConstantSet<ShaderStage, D3D9ShaderConstantsVSHardware>(m_state.vsConsts, m_vsLayout, m_state.vertexShader);
