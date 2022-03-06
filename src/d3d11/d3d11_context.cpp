@@ -19,6 +19,7 @@ namespace dxvk {
     m_annotation(this),
     m_multithread(this, false),
     m_device    (Device),
+    m_staging   (Device, StagingBufferSize),
     m_csFlags   (CsFlags),
     m_csChunk   (AllocCsChunk()),
     m_cmdData   (nullptr) {
@@ -473,6 +474,9 @@ namespace dxvk {
         cSrcSlice.offset(),
         sizeof(uint32_t));
     });
+
+    if (buf->HasSequenceNumber())
+      TrackBufferSequenceNumber(buf);
   }
 
 
@@ -903,134 +907,6 @@ namespace dxvk {
     });
   }
   
-  
-  void STDMETHODCALLTYPE D3D11DeviceContext::UpdateSubresource(
-          ID3D11Resource*                   pDstResource,
-          UINT                              DstSubresource,
-    const D3D11_BOX*                        pDstBox,
-    const void*                             pSrcData,
-          UINT                              SrcRowPitch,
-          UINT                              SrcDepthPitch) {
-    UpdateSubresource1(pDstResource,
-      DstSubresource, pDstBox, pSrcData,
-      SrcRowPitch, SrcDepthPitch, 0);
-  }
-
-
-  void STDMETHODCALLTYPE D3D11DeviceContext::UpdateSubresource1(
-          ID3D11Resource*                   pDstResource, 
-          UINT                              DstSubresource, 
-    const D3D11_BOX*                        pDstBox, 
-    const void*                             pSrcData, 
-          UINT                              SrcRowPitch, 
-          UINT                              SrcDepthPitch, 
-          UINT                              CopyFlags) {
-    D3D10DeviceLock lock = LockContext();
-
-    if (!pDstResource)
-      return;
-    
-    // Filter out invalid copy flags
-    CopyFlags &= D3D11_COPY_NO_OVERWRITE | D3D11_COPY_DISCARD;
-
-    // We need a different code path for buffers
-    D3D11_RESOURCE_DIMENSION resourceType;
-    pDstResource->GetType(&resourceType);
-    
-    if (resourceType == D3D11_RESOURCE_DIMENSION_BUFFER) {
-      const auto bufferResource = static_cast<D3D11Buffer*>(pDstResource);
-      const auto bufferSlice = bufferResource->GetBufferSlice();
-      
-      VkDeviceSize offset = bufferSlice.offset();
-      VkDeviceSize size   = bufferSlice.length();
-      
-      if (pDstBox != nullptr) {
-        offset = pDstBox->left;
-        size   = pDstBox->right - pDstBox->left;
-      }
-      
-      if (!size || offset + size > bufferSlice.length())
-        return;
-
-      bool useMap = (bufferSlice.buffer()->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-                 && (size == bufferSlice.length() || CopyFlags);
-      
-      if (useMap) {
-        D3D11_MAP mapType = (CopyFlags & D3D11_COPY_NO_OVERWRITE)
-          ? D3D11_MAP_WRITE_NO_OVERWRITE
-          : D3D11_MAP_WRITE_DISCARD;
-
-        D3D11_MAPPED_SUBRESOURCE mappedSr;
-        if (likely(useMap = SUCCEEDED(Map(pDstResource, 0, mapType, 0, &mappedSr)))) {
-          std::memcpy(reinterpret_cast<char*>(mappedSr.pData) + offset, pSrcData, size);
-          Unmap(pDstResource, 0);
-        }
-      }
-
-      if (!useMap) {
-        DxvkDataSlice dataSlice = AllocUpdateBufferSlice(size);
-        std::memcpy(dataSlice.ptr(), pSrcData, size);
-        
-        EmitCs([
-          cDataBuffer   = std::move(dataSlice),
-          cBufferSlice  = bufferSlice.subSlice(offset, size)
-        ] (DxvkContext* ctx) {
-          ctx->updateBuffer(
-            cBufferSlice.buffer(),
-            cBufferSlice.offset(),
-            cBufferSlice.length(),
-            cDataBuffer.ptr());
-        });
-      }
-    } else {
-      D3D11CommonTexture* dstTexture = GetCommonTexture(pDstResource);
-      
-      if (DstSubresource >= dstTexture->CountSubresources())
-        return;
-      
-      VkFormat packedFormat = dstTexture->GetPackedFormat();
-
-      auto formatInfo = imageFormatInfo(packedFormat);
-      auto subresource = dstTexture->GetSubresourceFromIndex(
-          formatInfo->aspectMask, DstSubresource);
-      
-      VkExtent3D mipExtent = dstTexture->MipLevelExtent(subresource.mipLevel);
-
-      VkOffset3D offset = { 0, 0, 0 };
-      VkExtent3D extent = mipExtent;
-      
-      if (pDstBox != nullptr) {
-        if (pDstBox->left >= pDstBox->right
-         || pDstBox->top >= pDstBox->bottom
-         || pDstBox->front >= pDstBox->back)
-          return;  // no-op, but legal
-        
-        offset.x = pDstBox->left;
-        offset.y = pDstBox->top;
-        offset.z = pDstBox->front;
-        
-        extent.width  = pDstBox->right - pDstBox->left;
-        extent.height = pDstBox->bottom - pDstBox->top;
-        extent.depth  = pDstBox->back - pDstBox->front;
-      }
-      
-      if (!util::isBlockAligned(offset, extent, formatInfo->blockSize, mipExtent)) {
-        Logger::err("D3D11: UpdateSubresource1: Unaligned region");
-        return;
-      }
-
-      auto stagingSlice = AllocStagingBuffer(util::computeImageDataSize(packedFormat, extent));
-
-      util::packImageData(stagingSlice.mapPtr(0),
-        pSrcData, SrcRowPitch, SrcDepthPitch, 0, 0,
-        dstTexture->GetVkImageType(), extent, 1,
-        formatInfo, formatInfo->aspectMask);
-
-      UpdateImage(dstTexture, &subresource,
-        offset, extent, std::move(stagingSlice));
-    }
-  }
-
 
   HRESULT STDMETHODCALLTYPE D3D11DeviceContext::UpdateTileMappings(
           ID3D11Resource*                   pTiledResource,
@@ -1131,8 +1007,8 @@ namespace dxvk {
       return;
     }
     
-    const D3D11CommonTexture* dstTextureInfo = GetCommonTexture(pDstResource);
-    const D3D11CommonTexture* srcTextureInfo = GetCommonTexture(pSrcResource);
+    D3D11CommonTexture* dstTextureInfo = GetCommonTexture(pDstResource);
+    D3D11CommonTexture* srcTextureInfo = GetCommonTexture(pSrcResource);
     
     const DXGI_VK_FORMAT_INFO dstFormatInfo = m_parent->LookupFormat(dstDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
     const DXGI_VK_FORMAT_INFO srcFormatInfo = m_parent->LookupFormat(srcDesc.Format, DXGI_VK_FORMAT_MODE_ANY);
@@ -1195,6 +1071,9 @@ namespace dxvk {
         ctx->resolveImage(cDstImage, cSrcImage, region, cFormat);
       });
     }
+
+    if (dstTextureInfo->HasSequenceNumber())
+      TrackTextureSequenceNumber(dstTextureInfo, DstSubresource);
   }
   
   
@@ -3245,13 +3124,21 @@ namespace dxvk {
           D3D11Buffer*                      pBuffer,
           UINT                              Offset,
           UINT                              Stride) {
-    EmitCs([
-      cSlotId       = Slot,
-      cBufferSlice  = pBuffer != nullptr ? pBuffer->GetBufferSlice(Offset) : DxvkBufferSlice(),
-      cStride       = Stride
-    ] (DxvkContext* ctx) {
-      ctx->bindVertexBuffer(cSlotId, cBufferSlice, cStride);
-    });
+    if (likely(pBuffer != nullptr)) {
+      EmitCs([
+        cSlotId       = Slot,
+        cBufferSlice  = pBuffer->GetBufferSlice(Offset),
+        cStride       = Stride
+      ] (DxvkContext* ctx) {
+        ctx->bindVertexBuffer(cSlotId, cBufferSlice, cStride);
+      });
+    } else {
+      EmitCs([
+        cSlotId       = Slot
+      ] (DxvkContext* ctx) {
+        ctx->bindVertexBuffer(cSlotId, DxvkBufferSlice(), 0);
+      });
+    }
   }
   
   
@@ -3404,6 +3291,11 @@ namespace dxvk {
           cSrcBuffer.length());
       }
     });
+
+    if (pDstBuffer->HasSequenceNumber())
+      TrackBufferSequenceNumber(pDstBuffer);
+    if (pSrcBuffer->HasSequenceNumber())
+      TrackBufferSequenceNumber(pSrcBuffer);
   }
 
 
@@ -3638,6 +3530,20 @@ namespace dxvk {
         }
       }
     }
+
+    if (pDstTexture->HasSequenceNumber()) {
+      for (uint32_t i = 0; i < pDstLayers->layerCount; i++) {
+        TrackTextureSequenceNumber(pDstTexture, D3D11CalcSubresource(
+          pDstLayers->mipLevel, pDstLayers->baseArrayLayer + i, pDstTexture->Desc()->MipLevels));
+      }
+    }
+
+    if (pSrcTexture->HasSequenceNumber()) {
+      for (uint32_t i = 0; i < pSrcLayers->layerCount; i++) {
+        TrackTextureSequenceNumber(pSrcTexture, D3D11CalcSubresource(
+          pSrcLayers->mipLevel, pSrcLayers->baseArrayLayer + i, pSrcTexture->Desc()->MipLevels));
+      }
+    }
   }
 
 
@@ -3668,6 +3574,106 @@ namespace dxvk {
   }
 
 
+  void D3D11DeviceContext::UpdateBuffer(
+          D3D11Buffer*                      pDstBuffer,
+          UINT                              Offset,
+          UINT                              Length,
+    const void*                             pSrcData) {
+    DxvkBufferSlice bufferSlice = pDstBuffer->GetBufferSlice(Offset, Length);
+
+    if (Length <= 1024 && !(Offset & 0x3) && !(Length & 0x3)) {
+      // The backend has special code paths for small buffer updates,
+      // however both offset and size must be aligned to four bytes.
+      DxvkDataSlice dataSlice = AllocUpdateBufferSlice(Length);
+      std::memcpy(dataSlice.ptr(), pSrcData, Length);
+
+      EmitCs([
+        cDataBuffer   = std::move(dataSlice),
+        cBufferSlice  = std::move(bufferSlice)
+      ] (DxvkContext* ctx) {
+        ctx->updateBuffer(
+          cBufferSlice.buffer(),
+          cBufferSlice.offset(),
+          cBufferSlice.length(),
+          cDataBuffer.ptr());
+      });
+    } else {
+      // Otherwise, to avoid large data copies on the CS thread,
+      // write directly to a staging buffer and dispatch a copy
+      DxvkBufferSlice stagingSlice = AllocStagingBuffer(Length);
+      std::memcpy(stagingSlice.mapPtr(0), pSrcData, Length);
+
+      EmitCs([
+        cStagingSlice = std::move(stagingSlice),
+        cBufferSlice  = std::move(bufferSlice)
+      ] (DxvkContext* ctx) {
+        ctx->copyBuffer(
+          cBufferSlice.buffer(),
+          cBufferSlice.offset(),
+          cStagingSlice.buffer(),
+          cStagingSlice.offset(),
+          cBufferSlice.length());
+      });
+    }
+
+    if (pDstBuffer->HasSequenceNumber())
+      TrackBufferSequenceNumber(pDstBuffer);
+  }
+
+
+  void D3D11DeviceContext::UpdateTexture(
+          D3D11CommonTexture*               pDstTexture,
+          UINT                              DstSubresource,
+    const D3D11_BOX*                        pDstBox,
+    const void*                             pSrcData,
+          UINT                              SrcRowPitch,
+          UINT                              SrcDepthPitch) {
+    if (DstSubresource >= pDstTexture->CountSubresources())
+      return;
+
+    VkFormat packedFormat = pDstTexture->GetPackedFormat();
+
+    auto formatInfo = imageFormatInfo(packedFormat);
+    auto subresource = pDstTexture->GetSubresourceFromIndex(
+        formatInfo->aspectMask, DstSubresource);
+
+    VkExtent3D mipExtent = pDstTexture->MipLevelExtent(subresource.mipLevel);
+
+    VkOffset3D offset = { 0, 0, 0 };
+    VkExtent3D extent = mipExtent;
+
+    if (pDstBox != nullptr) {
+      if (pDstBox->left >= pDstBox->right
+        || pDstBox->top >= pDstBox->bottom
+        || pDstBox->front >= pDstBox->back)
+        return;  // no-op, but legal
+
+      offset.x = pDstBox->left;
+      offset.y = pDstBox->top;
+      offset.z = pDstBox->front;
+
+      extent.width  = pDstBox->right - pDstBox->left;
+      extent.height = pDstBox->bottom - pDstBox->top;
+      extent.depth  = pDstBox->back - pDstBox->front;
+    }
+
+    if (!util::isBlockAligned(offset, extent, formatInfo->blockSize, mipExtent)) {
+      Logger::err("D3D11: UpdateSubresource1: Unaligned region");
+      return;
+    }
+
+    auto stagingSlice = AllocStagingBuffer(util::computeImageDataSize(packedFormat, extent));
+
+    util::packImageData(stagingSlice.mapPtr(0),
+      pSrcData, SrcRowPitch, SrcDepthPitch, 0, 0,
+      pDstTexture->GetVkImageType(), extent, 1,
+      formatInfo, formatInfo->aspectMask);
+
+    UpdateImage(pDstTexture, &subresource,
+      offset, extent, std::move(stagingSlice));
+  }
+
+
   void D3D11DeviceContext::UpdateImage(
           D3D11CommonTexture*               pDstTexture,
     const VkImageSubresource*               pDstSubresource,
@@ -3675,6 +3681,9 @@ namespace dxvk {
           VkExtent3D                        DstExtent,
           DxvkBufferSlice                   StagingBuffer) {
     bool dstIsImage = pDstTexture->GetMapMode() != D3D11_COMMON_TEXTURE_MAP_MODE_STAGING;
+
+    uint32_t dstSubresource = D3D11CalcSubresource(pDstSubresource->mipLevel,
+      pDstSubresource->arrayLayer, pDstTexture->Desc()->MipLevels);
 
     if (dstIsImage) {
       EmitCs([
@@ -3706,9 +3715,6 @@ namespace dxvk {
       // the packed buffer copy function which does not know about planes and
       // format metadata, so deal with it manually here.
       VkExtent3D dstMipExtent = pDstTexture->MipLevelExtent(pDstSubresource->mipLevel);
-
-      uint32_t dstSubresource = D3D11CalcSubresource(pDstSubresource->mipLevel,
-        pDstSubresource->arrayLayer, pDstTexture->Desc()->MipLevels);
 
       auto dstFormat = pDstTexture->GetPackedFormat();
       auto dstFormatInfo = imageFormatInfo(dstFormat);
@@ -3757,6 +3763,9 @@ namespace dxvk {
         srcPlaneOffset += util::flattenImageExtent(blockCount) * elementSize;
       }
     }
+
+    if (pDstTexture->HasSequenceNumber())
+      TrackTextureSequenceNumber(pDstTexture, dstSubresource);
   }
 
 
@@ -4398,7 +4407,7 @@ namespace dxvk {
 
 
   DxvkDataSlice D3D11DeviceContext::AllocUpdateBufferSlice(size_t Size) {
-    constexpr size_t UpdateBufferSize = 16 * 1024 * 1024;
+    constexpr size_t UpdateBufferSize = 1 * 1024 * 1024;
     
     if (Size >= UpdateBufferSize) {
       Rc<DxvkDataBuffer> buffer = new DxvkDataBuffer(Size);
@@ -4421,19 +4430,12 @@ namespace dxvk {
   
   DxvkBufferSlice D3D11DeviceContext::AllocStagingBuffer(
           VkDeviceSize                      Size) {
-    DxvkBufferCreateInfo info;
-    info.size   = Size;
-    info.usage  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT
-                | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    info.access = VK_ACCESS_TRANSFER_READ_BIT
-                | VK_ACCESS_SHADER_READ_BIT;
+    return m_staging.alloc(256, Size);
+  }
 
-    return DxvkBufferSlice(m_device->createBuffer(info,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+
+  void D3D11DeviceContext::ResetStagingBuffer() {
+    m_staging.reset();
   }
   
 
@@ -4502,6 +4504,27 @@ namespace dxvk {
 
     pMsState->sampleMask            = SampleMask;
     pMsState->enableAlphaToCoverage = VK_FALSE;
+  }
+
+
+  void D3D11DeviceContext::TrackResourceSequenceNumber(
+          ID3D11Resource*             pResource) {
+    if (!pResource)
+      return;
+
+    D3D11CommonTexture* texture = GetCommonTexture(pResource);
+
+    if (texture) {
+      if (texture->HasSequenceNumber()) {
+        for (uint32_t i = 0; i < texture->CountSubresources(); i++)
+          TrackTextureSequenceNumber(texture, i);
+      }
+    } else {
+      D3D11Buffer* buffer = static_cast<D3D11Buffer*>(pResource);
+
+      if (buffer->HasSequenceNumber())
+        TrackBufferSequenceNumber(buffer);
+    }
   }
 
 }

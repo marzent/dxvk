@@ -5,12 +5,13 @@
 namespace dxvk {
   
   D3D11CommonTexture::D3D11CommonTexture(
+          ID3D11Resource*             pInterface,
           D3D11Device*                pDevice,
     const D3D11_COMMON_TEXTURE_DESC*  pDesc,
           D3D11_RESOURCE_DIMENSION    Dimension,
           DXGI_USAGE                  DxgiUsage,
           VkImage                     vkImage)
-  : m_device(pDevice), m_dimension(Dimension), m_desc(*pDesc), m_dxgiUsage(DxgiUsage) {
+  : m_interface(pInterface), m_device(pDevice), m_dimension(Dimension), m_desc(*pDesc), m_dxgiUsage(DxgiUsage) {
     DXGI_VK_FORMAT_MODE   formatMode   = GetFormatMode();
     DXGI_VK_FORMAT_INFO   formatInfo   = m_device->LookupFormat(m_desc.Format, formatMode);
     DXGI_VK_FORMAT_FAMILY formatFamily = m_device->LookupFamily(m_desc.Format, formatMode);
@@ -162,7 +163,7 @@ namespace dxvk {
           if (m_mapMode != D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT)
             m_buffers.push_back(CreateMappedBuffer(j));
 
-          m_mapTypes.push_back(D3D11_MAP(~0u));
+          m_mapInfo.push_back({ D3D11_MAP(~0u), 0ull });
         }
       }
     }
@@ -202,11 +203,8 @@ namespace dxvk {
     // in case it is going to be mapped directly.
     VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     
-    if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT) {
-      memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-                       | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-                       | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
-    }
+    if (m_mapMode == D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT)
+      memoryProperties = GetMemoryFlags();
     
     if (vkImage == VK_NULL_HANDLE)
       m_image = m_device->GetDXVKDevice()->createImage(imageInfo, memoryProperties);
@@ -530,6 +528,22 @@ namespace dxvk {
   }
 
   
+  VkMemoryPropertyFlags D3D11CommonTexture::GetMemoryFlags() const {
+    VkMemoryPropertyFlags memoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                      | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    bool useCached = (m_device->GetOptions()->cachedDynamicResources == ~0u)
+                  || (m_device->GetOptions()->cachedDynamicResources & m_desc.BindFlags);
+
+    if (m_desc.Usage == D3D11_USAGE_STAGING || useCached)
+      memoryFlags |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+    else if (m_desc.Usage == D3D11_USAGE_DEFAULT || m_desc.BindFlags)
+      memoryFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    return memoryFlags;
+  }
+
+
   D3D11_COMMON_TEXTURE_MAP_MODE D3D11CommonTexture::DetermineMapMode(
     const DxvkImageCreateInfo*  pImageInfo) const {
     // Don't map an image unless the application requests it
@@ -542,16 +556,6 @@ namespace dxvk {
     if (!m_desc.BindFlags && m_desc.Usage != D3D11_USAGE_DEFAULT)
       return D3D11_COMMON_TEXTURE_MAP_MODE_STAGING;
 
-    // Write-only images should go through a buffer for multiple reasons:
-    // 1. Some games do not respect the row and depth pitch that is returned
-    //    by the Map() method, which leads to incorrect rendering (e.g. Nier)
-    // 2. Since the image will most likely be read for rendering by the GPU,
-    //    writing the image to device-local image may be more efficient than
-    //    reading its contents from host memory.
-    if (m_desc.Usage         == D3D11_USAGE_DYNAMIC
-     && m_desc.TextureLayout != D3D11_TEXTURE_LAYOUT_ROW_MAJOR)
-      return D3D11_COMMON_TEXTURE_MAP_MODE_BUFFER;
-    
     // Depth-stencil formats in D3D11 can be mapped and follow special
     // packing rules, so we need to copy that data into a buffer first
     if (GetPackedDepthStencilFormat(m_desc.Format))
@@ -561,13 +565,29 @@ namespace dxvk {
     if (imageFormatInfo(pImageInfo->format)->flags.test(DxvkFormatFlag::MultiPlane))
       return D3D11_COMMON_TEXTURE_MAP_MODE_BUFFER;
 
-    // Images that can be read by the host should be mapped directly in
-    // order to avoid expensive synchronization with the GPU. This does
-    // however require linear tiling, which may not be supported for all
-    // combinations of image parameters.
-    return this->CheckImageSupport(pImageInfo, VK_IMAGE_TILING_LINEAR)
-      ? D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT
-      : D3D11_COMMON_TEXTURE_MAP_MODE_BUFFER;
+    // If we can't use linear tiling for this image, we have to use a buffer
+    if (!this->CheckImageSupport(pImageInfo, VK_IMAGE_TILING_LINEAR))
+      return D3D11_COMMON_TEXTURE_MAP_MODE_BUFFER;
+
+    // If supported and requested, create a linear image. Default images
+    // can be used for resolves and other operations regardless of bind
+    // flags, so we need to use a proper image for those.
+    if (m_desc.TextureLayout == D3D11_TEXTURE_LAYOUT_ROW_MAJOR
+     || m_desc.Usage         == D3D11_USAGE_DEFAULT)
+      return D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT;
+
+    // The overhead of frequently uploading large dynamic images may outweigh
+    // the benefit of linear tiling, so use a linear image in those cases.
+    VkDeviceSize threshold = m_device->GetOptions()->maxDynamicImageBufferSize;
+    VkDeviceSize size = util::computeImageDataSize(pImageInfo->format, pImageInfo->extent);
+
+    if (size > threshold)
+      return D3D11_COMMON_TEXTURE_MAP_MODE_DIRECT;
+
+    // Dynamic images that can be sampled by a shader should generally go
+    // through a buffer to allow optimal tiling and to avoid running into
+    // bugs where games ignore the pitch when mapping the image.
+    return D3D11_COMMON_TEXTURE_MAP_MODE_BUFFER;
   }
   
   
@@ -592,7 +612,9 @@ namespace dxvk {
     VkMemoryPropertyFlags memType = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     
-    if (m_desc.Usage == D3D11_USAGE_STAGING)
+    bool useCached = m_device->GetOptions()->cachedDynamicResources == ~0u;
+
+    if (m_desc.Usage == D3D11_USAGE_STAGING || useCached)
       memType |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
     
     MappedBuffer result;
@@ -910,7 +932,7 @@ namespace dxvk {
           D3D11Device*                pDevice,
     const D3D11_COMMON_TEXTURE_DESC*  pDesc)
   : D3D11DeviceChild<ID3D11Texture1D>(pDevice),
-    m_texture (pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE1D, 0, VK_NULL_HANDLE),
+    m_texture (this, pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE1D, 0, VK_NULL_HANDLE),
     m_interop (this, &m_texture),
     m_surface (this, &m_texture),
     m_resource(this),
@@ -1008,7 +1030,7 @@ namespace dxvk {
           D3D11Device*                pDevice,
     const D3D11_COMMON_TEXTURE_DESC*  pDesc)
   : D3D11DeviceChild<ID3D11Texture2D1>(pDevice),
-    m_texture (pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE2D, 0, VK_NULL_HANDLE),
+    m_texture (this, pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE2D, 0, VK_NULL_HANDLE),
     m_interop (this, &m_texture),
     m_surface (this, &m_texture),
     m_resource(this),
@@ -1023,7 +1045,7 @@ namespace dxvk {
           DXGI_USAGE                  DxgiUsage,
           VkImage                     vkImage)
   : D3D11DeviceChild<ID3D11Texture2D1>(pDevice),
-    m_texture (pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE2D, DxgiUsage, vkImage),
+    m_texture (this, pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE2D, DxgiUsage, vkImage),
     m_interop (this, &m_texture),
     m_surface (this, &m_texture),
     m_resource(this),
@@ -1139,7 +1161,7 @@ namespace dxvk {
           D3D11Device*                pDevice,
     const D3D11_COMMON_TEXTURE_DESC*  pDesc)
   : D3D11DeviceChild<ID3D11Texture3D1>(pDevice),
-    m_texture (pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE3D, 0, VK_NULL_HANDLE),
+    m_texture (this, pDevice, pDesc, D3D11_RESOURCE_DIMENSION_TEXTURE3D, 0, VK_NULL_HANDLE),
     m_interop (this, &m_texture),
     m_resource(this),
     m_d3d10   (this) {

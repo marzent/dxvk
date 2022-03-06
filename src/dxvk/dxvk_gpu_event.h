@@ -111,7 +111,7 @@ namespace dxvk {
   private:
 
     Rc<vk::DeviceFn>     m_vkd;
-    sync::Spinlock       m_mutex;
+    std::mutex          m_mutex;
     std::vector<VkEvent> m_events;
 
   };
