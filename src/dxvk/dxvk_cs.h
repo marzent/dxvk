@@ -286,7 +286,7 @@ namespace dxvk {
     
   private:
     
-    dxvk::mutex               m_mutex;
+    std::mutex               m_mutex;
     std::vector<DxvkCsChunk*> m_chunks;
     
   };

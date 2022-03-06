@@ -153,7 +153,7 @@ namespace dxvk {
      */
     template<typename Pred>
     void synchronizeUntil(const Pred& pred) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
       m_finishCond.wait(lock, pred);
     }
 

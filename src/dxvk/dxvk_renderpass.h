@@ -180,7 +180,7 @@ namespace dxvk {
     DxvkRenderPassFormat    m_format;
     VkRenderPass            m_default;
     
-    dxvk::mutex             m_mutex;
+    std::mutex             m_mutex;
     sync::List<Instance>    m_instances;
 
     VkRenderPass findHandle(

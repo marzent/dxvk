@@ -71,7 +71,7 @@ namespace dxvk {
         return VK_NULL_HANDLE;
 
       // Prevent other threads from adding new instances and check again
-      std::lock_guard<dxvk::mutex> lock(m_mutex);
+      std::lock_guard<std::mutex> lock(m_mutex);
       instance = this->findInstance(state, renderPass);
 
       if (!instance) {
@@ -95,7 +95,7 @@ namespace dxvk {
 
     // Keep the object locked while compiling a pipeline since compiling
     // similar pipelines concurrently is fragile on some drivers
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     if (!this->findInstance(state, renderPass))
       this->createInstance(state, renderPass);
