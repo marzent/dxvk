@@ -246,7 +246,7 @@ namespace dxvk {
     const VkMemoryDedicatedAllocateInfo&    dedAllocInfo,
           VkMemoryPropertyFlags             flags,
           DxvkMemoryFlags                   hints) {
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     // Keep small allocations together to avoid fragmenting
     // chunks for larger resources with lots of small gaps,
@@ -445,7 +445,7 @@ namespace dxvk {
 
   void DxvkMemoryAllocator::free(
     const DxvkMemory&           memory) {
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     memory.m_type->heap->stats.memoryUsed -= memory.m_length;
 
     if (memory.m_chunk != nullptr) {

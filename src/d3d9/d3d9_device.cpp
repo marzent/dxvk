@@ -4690,7 +4690,7 @@ namespace dxvk {
     pResource->GPUReadingRange().Conjoin(pResource->DirtyRange());
     pResource->DirtyRange().Clear();
 
-	  return D3D_OK;
+      return D3D_OK;
   }
 
 
@@ -4953,17 +4953,17 @@ namespace dxvk {
       }
     }
 
-    Rc<DxvkBuffer>& intBuffer = constSet.swvpBuffers.intBuffer;
-    // Max copy source size is 2048 * 16 => always aligned to any plausible value
-    // => we won't copy out of bounds
-    if (likely(constSet.meta.maxConstIndexI != 0 || intBuffer == nullptr)) {
-      CopySoftwareConstants(DxsoConstantBuffers::VSIntConstantBuffer, intBuffer, Src.iConsts, intDataSize, false);
-    }
+  Rc<DxvkBuffer>& intBuffer = constSet.swvpBuffers.intBuffer;
+      // Max copy source size is 2048 * 16 => always aligned to any plausible value
+      // => we won't copy out of bounds
+      if (likely(constSet.meta.maxConstIndexI != 0 || intBuffer == nullptr)) {
+        CopySoftwareConstants(DxsoConstantBuffers::VSIntConstantBuffer, intBuffer, Src.iConsts, intDataSize, false);
+      }
 
-    Rc<DxvkBuffer>& boolBuffer = constSet.swvpBuffers.boolBuffer;
-    if (likely(constSet.meta.maxConstIndexB != 0 || boolBuffer == nullptr)) {
-      CopySoftwareConstants(DxsoConstantBuffers::VSBoolConstantBuffer, boolBuffer, Src.bConsts, boolDataSize, false);
-    }
+      Rc<DxvkBuffer>& boolBuffer = constSet.swvpBuffers.boolBuffer;
+      if (likely(constSet.meta.maxConstIndexB != 0 || boolBuffer == nullptr)) {
+        CopySoftwareConstants(DxsoConstantBuffers::VSBoolConstantBuffer, boolBuffer, Src.bConsts, boolDataSize, false);
+      }
   }
 
 

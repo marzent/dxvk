@@ -71,7 +71,7 @@ namespace dxvk {
   DxvkCsChunk* DxvkCsChunkPool::allocChunk(DxvkCsChunkFlags flags) {
     DxvkCsChunk* chunk = nullptr;
 
-    { std::lock_guard<dxvk::mutex> lock(m_mutex);
+    { std::lock_guard<std::mutex> lock(m_mutex);
       
       if (m_chunks.size() != 0) {
         chunk = m_chunks.back();
@@ -90,7 +90,7 @@ namespace dxvk {
   void DxvkCsChunkPool::freeChunk(DxvkCsChunk* chunk) {
     chunk->reset();
     
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_chunks.push_back(chunk);
   }
   
@@ -105,7 +105,7 @@ namespace dxvk {
   
   
   DxvkCsThread::~DxvkCsThread() {
-    { std::unique_lock<dxvk::mutex> lock(m_mutex);
+    { std::unique_lock<std::mutex> lock(m_mutex);
       m_stopped.store(true);
     }
     
@@ -117,7 +117,7 @@ namespace dxvk {
   uint64_t DxvkCsThread::dispatchChunk(DxvkCsChunkRef&& chunk) {
     uint64_t seq;
 
-    { std::unique_lock<dxvk::mutex> lock(m_mutex);
+    { std::unique_lock<std::mutex> lock(m_mutex);
       seq = ++m_chunksDispatched;
       m_chunksQueued.push(std::move(chunk));
     }
@@ -131,7 +131,7 @@ namespace dxvk {
     // Avoid locking if we know the sync is a no-op, may
     // reduce overhead if this is being called frequently
     if (seq > m_chunksExecuted.load(std::memory_order_acquire)) {
-      std::unique_lock<dxvk::mutex> lock(m_mutex);
+      std::unique_lock<std::mutex> lock(m_mutex);
 
       if (seq == SynchronizeAll)
         seq = m_chunksDispatched.load();
@@ -156,7 +156,7 @@ namespace dxvk {
 
     try {
       while (!m_stopped.load()) {
-        { std::unique_lock<dxvk::mutex> lock(m_mutex);
+        { std::unique_lock<std::mutex> lock(m_mutex);
           if (chunk) {
             m_chunksExecuted++;
             m_condOnSync.notify_one();

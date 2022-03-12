@@ -63,7 +63,7 @@ namespace dxvk {
     VkRenderPass handle = this->findHandle(ops);
 
     if (unlikely(!handle)) {
-      std::lock_guard<dxvk::mutex> lock(m_mutex);
+      std::lock_guard<std::mutex> lock(m_mutex);
       handle = this->findHandle(ops);
 
       if (!handle) {
@@ -280,7 +280,7 @@ namespace dxvk {
   
   
   DxvkRenderPass* DxvkRenderPassPool::getRenderPass(const DxvkRenderPassFormat& fmt) {
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     auto entry = m_renderPasses.find(fmt);
     if (entry != m_renderPasses.end())

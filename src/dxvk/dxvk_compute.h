@@ -145,7 +145,7 @@ namespace dxvk {
     Rc<DxvkPipelineLayout>      m_layout;
     
     alignas(CACHE_LINE_SIZE)
-    dxvk::mutex                             m_mutex;
+    std::mutex                             m_mutex;
     sync::List<DxvkComputePipelineInstance> m_pipelines;
     
     DxvkComputePipelineInstance* createInstance(

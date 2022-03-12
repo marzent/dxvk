@@ -286,7 +286,7 @@ namespace dxvk {
     
   private:
     
-    dxvk::mutex               m_mutex;
+    std::mutex               m_mutex;
     std::vector<DxvkCsChunk*> m_chunks;
     
   };
@@ -429,9 +429,9 @@ namespace dxvk {
     std::atomic<uint64_t>       m_chunksExecuted   = { 0ull };
     
     std::atomic<bool>           m_stopped = { false };
-    dxvk::mutex                 m_mutex;
-    dxvk::condition_variable    m_condOnAdd;
-    dxvk::condition_variable    m_condOnSync;
+    std::mutex                  m_mutex;
+    std::condition_variable     m_condOnAdd;
+    std::condition_variable     m_condOnSync;
     std::queue<DxvkCsChunkRef>  m_chunksQueued;
     dxvk::thread                m_thread;
     

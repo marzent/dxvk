@@ -223,7 +223,7 @@ namespace dxvk {
     
     // List of pipeline instances, shared between threads
     alignas(CACHE_LINE_SIZE)
-    dxvk::mutex                               m_mutex;
+    std::mutex                               m_mutex;
     sync::List<DxvkGraphicsPipelineInstance>  m_pipelines;
     
     DxvkGraphicsPipelineInstance* createInstance(

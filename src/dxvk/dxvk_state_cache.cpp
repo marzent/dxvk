@@ -232,7 +232,7 @@ namespace dxvk {
     }
 
     // Queue a job to write this pipeline to the cache
-    std::unique_lock<dxvk::mutex> lock(m_writerLock);
+    std::unique_lock<std::mutex> lock(m_writerLock);
 
     m_writerQueue.push({ shaders, state,
       DxvkComputePipelineStateInfo(),
@@ -256,7 +256,7 @@ namespace dxvk {
     }
 
     // Queue a job to write this pipeline to the cache
-    std::unique_lock<dxvk::mutex> lock(m_writerLock);
+    std::unique_lock<std::mutex> lock(m_writerLock);
 
     m_writerQueue.push({ shaders,
       DxvkGraphicsPipelineStateInfo(), state,
@@ -272,11 +272,11 @@ namespace dxvk {
       return;
     
     // Add the shader so we can look it up by its key
-    std::unique_lock<dxvk::mutex> entryLock(m_entryLock);
+    std::unique_lock<std::mutex> entryLock(m_entryLock);
     m_shaderMap.insert({ key, shader });
 
     // Deferred lock, don't stall workers unless we have to
-    std::unique_lock<dxvk::mutex> workerLock;
+    std::unique_lock<std::mutex> workerLock;
 
     auto pipelines = m_pipelineMap.equal_range(key);
 
@@ -292,7 +292,7 @@ namespace dxvk {
         continue;
       
       if (!workerLock)
-        workerLock = std::unique_lock<dxvk::mutex>(m_workerLock);
+        workerLock = std::unique_lock<std::mutex>(m_workerLock);
       
       m_workerQueue.push(item);
     }
@@ -303,8 +303,8 @@ namespace dxvk {
 
 
   void DxvkStateCache::stopWorkerThreads() {
-    { std::lock_guard<dxvk::mutex> workerLock(m_workerLock);
-      std::lock_guard<dxvk::mutex> writerLock(m_writerLock);
+    { std::lock_guard<std::mutex> workerLock(m_workerLock);
+      std::lock_guard<std::mutex> writerLock(m_writerLock);
 
       if (m_stopThreads.exchange(true))
         return;
@@ -927,7 +927,7 @@ namespace dxvk {
     while (!m_stopThreads.load()) {
       WorkerItem item;
 
-      { std::unique_lock<dxvk::mutex> lock(m_workerLock);
+      { std::unique_lock<std::mutex> lock(m_workerLock);
 
         if (m_workerQueue.empty()) {
           m_workerBusy -= 1;
@@ -960,7 +960,7 @@ namespace dxvk {
     while (!m_stopThreads.load()) {
       DxvkStateCacheEntry entry;
 
-      { std::unique_lock<dxvk::mutex> lock(m_writerLock);
+      { std::unique_lock<std::mutex> lock(m_writerLock);
 
         m_writerCond.wait(lock, [this] () {
           return m_writerQueue.size()

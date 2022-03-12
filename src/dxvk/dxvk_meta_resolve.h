@@ -151,7 +151,7 @@ namespace dxvk {
     VkShaderModule m_shaderFragD = VK_NULL_HANDLE;
     VkShaderModule m_shaderFragDS = VK_NULL_HANDLE;
 
-    dxvk::mutex m_mutex;
+    std::mutex m_mutex;
 
     std::unordered_map<
       DxvkMetaResolvePipelineKey,

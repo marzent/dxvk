@@ -99,7 +99,7 @@ namespace dxvk {
     std::vector<DxvkStateCacheEntry>  m_entries;
     std::atomic<bool>                 m_stopThreads = { false };
 
-    dxvk::mutex                       m_entryLock;
+    std::mutex                        m_entryLock;
 
     std::unordered_multimap<
       DxvkStateCacheKey, size_t,
@@ -113,14 +113,14 @@ namespace dxvk {
       DxvkShaderKey, Rc<DxvkShader>,
       DxvkHash, DxvkEq> m_shaderMap;
 
-    dxvk::mutex                       m_workerLock;
-    dxvk::condition_variable          m_workerCond;
+    std::mutex                        m_workerLock;
+    std::condition_variable           m_workerCond;
     std::queue<WorkerItem>            m_workerQueue;
     std::atomic<uint32_t>             m_workerBusy;
     std::vector<dxvk::thread>         m_workerThreads;
 
-    dxvk::mutex                       m_writerLock;
-    dxvk::condition_variable          m_writerCond;
+    std::mutex                        m_writerLock;
+    std::condition_variable           m_writerCond;
     std::queue<WriterItem>            m_writerQueue;
     dxvk::thread                      m_writerThread;
 

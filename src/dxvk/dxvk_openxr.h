@@ -37,8 +37,8 @@ namespace dxvk {
 
   private:
 
-    dxvk::mutex           m_mutex;
-    HMODULE               m_wineOxr     = nullptr;
+    std::mutex            m_mutex;
+    HMODULE               m_wineOxr     = nullptr;  //was SoHandle
 
     bool m_loadedOxrApi      = false;
     bool m_initializedInsExt = false;

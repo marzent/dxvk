@@ -280,7 +280,7 @@ namespace dxvk {
     VkQueryType       m_queryType;
     uint32_t          m_queryPoolSize;
     
-    dxvk::mutex                     m_mutex;
+    std::mutex                      m_mutex;
     std::vector<DxvkGpuQueryHandle> m_handles;
     std::vector<VkQueryPool>        m_pools;
 

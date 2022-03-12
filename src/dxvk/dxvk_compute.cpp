@@ -37,7 +37,7 @@ namespace dxvk {
     DxvkComputePipelineInstance* instance = this->findInstance(state);
 
     if (unlikely(!instance)) {
-      std::lock_guard<dxvk::mutex> lock(m_mutex);
+      std::lock_guard<std::mutex> lock(m_mutex);
       instance = this->findInstance(state);
 
       if (!instance) {
@@ -52,7 +52,7 @@ namespace dxvk {
 
   void DxvkComputePipeline::compilePipeline(
     const DxvkComputePipelineStateInfo& state) {
-    std::lock_guard<dxvk::mutex> lock(m_mutex);
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     if (!this->findInstance(state))
       this->createInstance(state);
