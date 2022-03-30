@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
 # default directories
-dxvk_lib32=${dxvk_lib32:-"x32"}
 dxvk_lib64=${dxvk_lib64:-"x64"}
 
 # figure out where we are
-basedir=$(dirname "$(readlink -f $0)")
+basedir="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
 
 # figure out which action to perform
 action="$1"
@@ -56,20 +55,15 @@ export WINEDEBUG=-all
 # wine gecko and mono
 export WINEDLLOVERRIDES="mscoree,mshtml="
 
-wine="wine"
-wine64="wine64"
-wineboot="wineboot"
+wine="wine64"
+wineboot="wine64 wineboot"
 
 # $PATH is the way for user to control where wine is located (including custom Wine versions).
 # Pure 64-bit Wine (non Wow64) requries skipping 32-bit steps.
 # In such case, wine64 and winebooot will be present, but wine binary will be missing,
 # however it can be present in other PATHs, so it shouldn't be used, to avoid versions mixing.
 wine_path=$(dirname "$(which $wineboot)")
-wow64=true
-if ! [ -f "$wine_path/$wine" ]; then
-   wine=$wine64
-   wow64=false
-fi
+wow64=false
 
 # resolve 32-bit and 64-bit system32 path
 winever=$($wine --version | grep wine)
@@ -82,21 +76,17 @@ fi
 # if they are missing
 $wineboot -u
 
-win64_sys_path=$($wine64 winepath -u 'C:\windows\system32' 2> /dev/null)
+win64_sys_path=$($wine winepath -u 'C:\windows\system32' 2> /dev/null)
 win64_sys_path="${win64_sys_path/$'\r'/}"
-if $wow64; then
-  win32_sys_path=$($wine winepath -u 'C:\windows\system32' 2> /dev/null)
-  win32_sys_path="${win32_sys_path/$'\r'/}"
-fi
 
-if [ -z "$win32_sys_path" ] && [ -z "$win64_sys_path" ]; then
+if [ -z "$win64_sys_path" ]; then
   echo 'Failed to resolve C:\windows\system32.' >&2
   exit 1
 fi
 
 # create native dll override
 overrideDll() {
-  $wine reg add 'HKEY_CURRENT_USER\Software\Wine\DllOverrides' /v $1 /d native /f >/dev/null 2>&1
+  $wine reg add 'HKEY_CURRENT_USER\Software\Wine\DllOverrides' /v $1 /d native,builtin /f >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo -e "Failed to add override for $1"
     exit 1
@@ -171,32 +161,14 @@ uninstallFile() {
 
 install() {
   installFile "$win64_sys_path" "$dxvk_lib64" "$1"
-  inst64_ret="$?"
 
-  inst32_ret=-1
-  if $wow64; then
-    installFile "$win32_sys_path" "$dxvk_lib32" "$1"
-    inst32_ret="$?"
-  fi
-
-  if (( ($inst32_ret == 0) || ($inst64_ret == 0) )); then
-    overrideDll "$1"
-  fi
+  overrideDll "$1"
 }
 
 uninstall() {
   uninstallFile "$win64_sys_path" "$dxvk_lib64" "$1"
-  uninst64_ret="$?"
 
-  uninst32_ret=-1
-  if $wow64; then
-    uninstallFile "$win32_sys_path" "$dxvk_lib32" "$1"
-    uninst32_ret="$?"
-  fi
-
-  if (( ($uninst32_ret == 0) || ($uninst64_ret == 0) )); then
-    restoreDll "$1"
-  fi
+  restoreDll "$1"
 }
 
 # skip dxgi during install if not explicitly
@@ -204,8 +176,6 @@ uninstall() {
 if $with_dxgi || [ "$action" == "uninstall" ]; then
   $action dxgi
 fi
-
-$action d3d9
 
 if $with_d3d10 || [ "$action" == "uninstall" ]; then
   $action d3d10
