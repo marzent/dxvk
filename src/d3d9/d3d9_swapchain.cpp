@@ -997,7 +997,7 @@ namespace dxvk {
       VkImage imageHandle = m_presenter->getImage(i).image;
       
       Rc<DxvkImage> image = new DxvkImage(
-        m_device->vkd(), imageInfo, imageHandle);
+        m_device.ptr(), imageInfo, imageHandle);
 
       m_imageViews[i] = new DxvkImageView(
         m_device->vkd(), image, viewInfo);
@@ -1038,7 +1038,7 @@ namespace dxvk {
     desc.IsAttachmentOnly   = FALSE;
 
     for (uint32_t i = 0; i < m_backBuffers.size(); i++)
-      m_backBuffers[i] = new D3D9Surface(m_parent, &desc, this);
+      m_backBuffers[i] = new D3D9Surface(m_parent, &desc, this, nullptr);
 
     auto swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
 
