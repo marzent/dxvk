@@ -142,6 +142,8 @@ namespace dxvk {
     void compilePipelines(
       const WorkerItem&               item);
 
+    bool realReadCacheFile(
+            std::wstring               name);
     bool readCacheFile();
 
     bool readCacheHeader(
@@ -182,6 +184,7 @@ namespace dxvk {
     void writerFunc();
 
     std::wstring getCacheFileName() const;
+    std::wstring getBaseCacheFileName() const;
     
     std::string getCacheDir() const;
 
