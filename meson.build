@@ -14,6 +14,9 @@ compiler_args = [
   '-msse3',
   '-mfpmath=sse',
   '-Wimplicit-fallthrough',
+  # gcc 12.1
+  '-Wno-deprecated-declarations',
+  '-Wno-stringop-overread',
   # clang
   '-Wno-unused-private-field',
   '-Wno-microsoft-exception-spec',
