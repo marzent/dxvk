@@ -82,6 +82,10 @@ function build_script {
   chmod +x "$DXVK_BUILD_DIR/setup_dxvk.sh"
 }
 
+function copy_extras {
+  cp "$DXVK_SRC_DIR/dxvk.conf" "$DXVK_BUILD_DIR/dxvk.conf"
+}
+
 function package {
   cd "$DXVK_BUILD_DIR/.."
   tar -czf "$DXVK_ARCHIVE_PATH" "dxvk-macOS-$DXVK_VERSION"
@@ -89,6 +93,7 @@ function package {
 }
 
 build_arch 64
+copy_extras
 build_script
 
 if [ $opt_nopackage -eq 0 ]; then
