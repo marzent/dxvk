@@ -1,3 +1,7 @@
+### This repository is not under active development anymore.
+
+### Please go to https://github.com/Gcenx/DXVK-macOS where you will find an up-to-date version of DXVK, that does not rely on patched versions of MoltenVK.
+
 # DXVK
 
 A Vulkan-based translation layer for Direct3D 9/10/11 which allows running 3D applications on Linux using Wine.
